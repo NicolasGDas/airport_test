@@ -1,0 +1,1 @@
+Run: alembic -c app/db/alembic.ini revision --autogenerate -m 'init' && alembic -c app/db/alembic.ini upgrade head
