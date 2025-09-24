@@ -1,15 +1,15 @@
 """Finish vesion
 
-Revision ID: e0194c969129
+Revision ID: ac5f4e6aae31
 Revises: 
-Create Date: 2025-09-24 18:19:56.442418
+Create Date: 2025-09-24 18:59:10.454213
 """
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'e0194c969129'
+revision = 'ac5f4e6aae31'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -45,10 +45,9 @@ def upgrade() -> None:
     sa.Column('utc_offset', sa.Numeric(precision=4, scale=2), nullable=True),
     sa.Column('continent_code', sa.String(length=2), nullable=True),
     sa.Column('timezone_olson', sa.String(length=64), nullable=True),
+    sa.CheckConstraint('(utc_offset IS NULL) OR (utc_offset BETWEEN -12 AND 14 AND mod(((utc_offset * 60)::int), 15) = 0)', name='ck_airport_utc_quarter_steps'),
     sa.CheckConstraint('latitude >= -90 AND latitude <= 90', name='ck_airport_lat_range'),
     sa.CheckConstraint('longitude >= -180 AND longitude <= 180', name='ck_airport_lon_range'),
-    sa.CheckConstraint('utc_offset IS NULL OR (utc_offset >= -12 AND utc_offset <= 14)', name='ck_airport_utc_range'),
-    sa.CheckConstraint('utc_offset IS NULL OR trunc(utc_offset * 2) = (utc_offset * 2)', name='ck_airport_utc_half_steps'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_airport_country_city', 'airports', ['country', 'city'], unique=False)

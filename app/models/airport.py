@@ -37,14 +37,17 @@ class Airport(Base):
         CheckConstraint("latitude >= -90 AND latitude <= 90", name="ck_airport_lat_range"),
         CheckConstraint("longitude >= -180 AND longitude <= 180", name="ck_airport_lon_range"),
 
-        # Rango y granularidad de UTC: [-12, 14] y sólo enteros o .5 (x2 es entero)
-        CheckConstraint("utc_offset IS NULL OR (utc_offset >= -12 AND utc_offset <= 14)", name="ck_airport_utc_range"),
-        CheckConstraint("utc_offset IS NULL OR trunc(utc_offset * 2) = (utc_offset * 2)", name="ck_airport_utc_half_steps"),
+        
+        CheckConstraint(
+            "(utc_offset IS NULL) OR (utc_offset BETWEEN -12 AND 14 AND mod(((utc_offset * 60)::int), 15) = 0)",
+            name="ck_airport_utc_quarter_steps",
+        ),
+
 
         # Unicidad parcial (PostgreSQL) — permite varios NULL y exige unicidad cuando hay valor
         # UniqueConstraint("iata", name="uq_airport_iata_not_null", deferrable=False, initially="IMMEDIATE"),
         # UniqueConstraint("icao", name="uq_airport_icao_not_null", deferrable=False, initially="IMMEDIATE"),
-        # Nota: en la migración hacemos estas unique como *parciales* (WHERE iata IS NOT NULL), ver abajo.
+
 
         # Índices compuestos útiles para queries
         Index("ix_airport_country_city", "country", "city"),
