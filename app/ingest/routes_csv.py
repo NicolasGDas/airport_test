@@ -1,44 +1,28 @@
 import pandas as pd
-from app.core.utils import normalize_occupancy
+from app.schemas.routes import RouteIn
+from typing import List
+from pydantic import ValidationError
 
-def parse_routes_csv(file) -> list[dict]:
+def parse_routes_csv(file) -> list[RouteIn]:
+    def _read(sep=None):
+        return pd.read_csv(file, sep=sep, engine="python", dtype=str)
+
     try:
-        df = pd.read_csv(file)
+        df = pd.read_csv(file, sep="|", engine="python", dtype=str)  # Asi esta este csv
     except Exception:
         file.seek(0)
-        df = pd.read_csv(file, sep='|', engine='python')
-    cols = {c.lower(): c for c in df.columns}
-    def pick(*names):
-        for n in names:
-            c = cols.get(n.lower())
-            if c: return c
-        return None
+        df = _read() # Por si no falla que lo haga generico
 
-    airline_iata_c = pick("airline_iata", "codaerolinea", "iata")
-    origin_c = pick("origin_iata", "aeropuertoorigen", "origen")
-    dest_c = pick("destination_iata", "aeropuertodestino", "destino")
-    capacity_c = pick("capacity", "lugares", "asientos")
-    occ_c = pick("occupancy", "load_factor", "ticketsvendidos")
-    date_c = pick("flight_date", "date", "fecha")
 
-    out = []
-    for _, row in df.iterrows():
+    df = df.loc[:, ~df.columns.str.match(r"^Unnamed")]
+    df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+    data = df.to_dict(orient="records")
+    
+    items: List[RouteIn] = []
+    for rec in data:
         try:
-            occ = None
-            if occ_c:
-                if occ_c.lower() == "ticketsvendidos" and capacity_c:
-                    occ = normalize_occupancy(float(row[occ_c]) / float(row[capacity_c]) if pd.notna(row[occ_c]) and pd.notna(row[capacity_c]) else None)
-                else:
-                    occ = normalize_occupancy(row[occ_c])
-            rec = {
-                "airline_iata": str(row[airline_iata_c]).strip() if airline_iata_c else None,
-                "origin_iata": str(row[origin_c]).strip() if origin_c else None,
-                "destination_iata": str(row[dest_c]).strip() if dest_c else None,
-                "capacity": int(row[capacity_c]) if capacity_c and pd.notna(row[capacity_c]) else None,
-                "occupancy": occ,
-                "flight_date": pd.to_datetime(row[date_c], errors="coerce").date() if date_c else None,
-            }
-            out.append(rec)
-        except Exception:
+            items.append(RouteIn.model_validate(rec))
+        except ValidationError:
+            print("Registro inválido, se ignora:", rec)
             continue
-    return out
+    return items

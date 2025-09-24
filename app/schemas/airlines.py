@@ -5,6 +5,9 @@ class AirlineIn(BaseModel):
     iata: str | None = None
     icao: str | None = None
     country: str | None = None
+    callsign: str | None = None
+    active: str | None = None
+    aliases: str | None = None
 
 class AirlineOut(AirlineIn):
     id: int

@@ -11,6 +11,9 @@ class Airline(Base):
     iata: Mapped[str | None] = mapped_column(String(3), index=True)
     icao: Mapped[str | None] = mapped_column(String(4), index=True)
     country: Mapped[str | None] = mapped_column(String(100))
+    callsign: Mapped[str | None] = mapped_column(String(100))
+    active: Mapped[bool] = mapped_column(default=True)
+    aliases: Mapped[str | None] = mapped_column(String(200))
 
     __table_args__ = (
         UniqueConstraint("iata", name="uq_airline_iata"),
