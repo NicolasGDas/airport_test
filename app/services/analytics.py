@@ -9,8 +9,32 @@ def average_occupancy(db: Session, start: date | None, end: date | None):
 
 def domestic_altitude_percentage(db: Session, min_occupancy: float):
     total, over, pct = repo.domestic_altitude_percentage(db, min_occupancy=min_occupancy)
-    return { "total_high_occupancy_domestic": total, "over_1000m_altitude_diff": over, "percentage": pct }
+    return {
+        "total_high_occupancy_domestic": total,
+        "over_1000m_altitude_diff": over,
+        "percentage": pct
+    }
 
 def top_routes_by_country(db: Session, country: str, start: date | None, end: date | None):
     rows = repo.top_routes_by_country(db, country=country, start=start, end=end)
     return [{ "origin": r[0], "destination": r[1], "flights": int(r[2]) } for r in rows]
+
+
+def consecutive_high_occupancy_routes(
+    db: Session,
+    min_occupancy: float = 0.85,
+    start: date | None = None,
+    end: date | None = None,
+):
+    rows = repo.consecutive_high_occupancy_routes(db, min_occupancy=min_occupancy, start=start, end=end)
+    # rows = [(airline, origin, destination, first_date, second_date), ...]
+    return [
+        {
+            "airline": r[0],
+            "origin": r[1],
+            "destination": r[2],
+            "first_date": r[3],
+            "second_date": r[4],
+        }
+        for r in rows
+    ]
