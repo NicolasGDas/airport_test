@@ -1,6 +1,8 @@
 # from __future__ import annotations
+from typing import List, Optional
+from app.schemas.analytics import AirlineOccupancyOut, TopRouteOut
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import select, func, case, cast, Float, text, and_
+from sqlalchemy import select, func, case, cast, Float, text, and_, or_
 from sqlalchemy.sql import exists
 from datetime import date
 from app.models import Route, Airport, Airline
@@ -69,24 +71,6 @@ def domestic_altitude_percentage(db: Session, min_occupancy: float = 0.85):
 
     pct = (over / total * 100.0) if total else 0.0
     return total, over, pct
-
-def top_routes_by_country(db: Session, country: str, start=None, end=None):
-    ao = aliased(Airport)
-    ad = aliased(Airport)
-    R = Route
-    q = (
-        select(ao.iata, ad.iata, func.count().label("flights"))
-        .join(ao, R.origin_id == ao.id)
-        .join(ad, R.destination_id == ad.id)
-        .where(ao.country == country, ad.country == country)
-    )
-    if start:
-        q = q.where(R.flight_date >= start)
-    if end:
-        q = q.where(R.flight_date <= end)
-    q = q.group_by(ao.iata, ad.iata).order_by(func.count().desc()).limit(5)
-    return db.execute(q).all()
-
 
 
 def consecutive_high_occupancy_routes(
@@ -171,3 +155,147 @@ def consecutive_high_occupancy_routes(
     q = q.order_by(Airline.name, ao.iata, ad.iata, R.flight_date)
 
     return db.execute(q).all()
+
+
+def find_top_routes_by_country_orm(
+    db: Session,
+    *,
+    country: str,
+    start: Optional["date"] = None,   # importa date si preferís
+    end: Optional["date"] = None,
+    scope: str = "either",            # "origin" | "destination" | "either"
+    limit: int = 5,
+    only_operated: Optional[bool] = None,
+) -> List[TopRouteOut]:
+    R = Route
+    AO = aliased(Airport)  # origin
+    AD = aliased(Airport)  # destination
+
+    # Nombres legibles (IATA → ICAO → name). Usamos MAX() para poder agrupar solo por IDs.
+    origin_name = func.max(func.coalesce(AO.iata, AO.icao, AO.name)).label("origin")
+    dest_name   = func.max(func.coalesce(AD.iata, AD.icao, AD.name)).label("destination")
+
+    # Filtro país según scope
+    if scope == "origin":
+        country_filter = (AO.country == country)
+    elif scope == "destination":
+        country_filter = (AD.country == country)
+    else:
+        country_filter = or_(AO.country == country, AD.country == country)
+
+    filters = [country_filter]
+    if only_operated is True:
+        filters.append(R.operated_carrier.is_(True))
+    elif only_operated is False:
+        filters.append(R.operated_carrier.is_(False))
+    if start is not None:
+        filters.append(R.flight_date >= start)
+    if end is not None:
+        filters.append(R.flight_date <= end)
+
+    q = (
+        select(
+            R.origin_airport_id,
+            R.destination_airport_id,
+            origin_name,
+            dest_name,
+            func.count().label("flights"),
+        )
+        .select_from(R)
+        .join(AO, AO.id == R.origin_airport_id)
+        .join(AD, AD.id == R.destination_airport_id)
+        .where(and_(*filters))
+        .group_by(R.origin_airport_id, R.destination_airport_id)
+        .order_by(func.count().desc())
+        .limit(limit)
+    )
+
+    rows = db.execute(q).mappings().all()
+
+    # Mapear a Pydantic
+    return [
+        TopRouteOut(
+            origin_airport_id=r["origin_airport_id"],
+            destination_airport_id=r["destination_airport_id"],
+            origin=r["origin"],
+            destination=r["destination"],
+            flights=int(r["flights"]),
+        )
+        for r in rows
+    ]
+    
+    
+def find_airline_occupancy_orm(
+    db: Session,
+    *,
+    start: Optional["date"] = None,  # from datetime import date si querés tipar
+    end: Optional["date"] = None,
+    only_operated: Optional[bool] = None,
+    min_flights: int = 1,            # opcional: filtrar aerolíneas con al menos N vuelos
+) -> List[AirlineOccupancyOut]:
+    R = Route
+    A = Airline
+
+    filters = []
+    if start is not None:
+        filters.append(R.flight_date >= start)
+    if end is not None:
+        filters.append(R.flight_date <= end)
+    if only_operated is True:
+        filters.append(R.operated_carrier.is_(True))
+    elif only_operated is False:
+        filters.append(R.operated_carrier.is_(False))
+
+    sum_tickets   = func.coalesce(func.sum(R.tickets_sold), 0).label("tickets")
+    sum_capacity  = func.coalesce(func.sum(R.capacity), 0).label("capacity")
+    flights_count = func.count().label("flights")
+
+    # occupancy = SUM(tickets) / NULLIF(SUM(capacity), 0)
+    occupancy = cast(
+        sum_tickets.cast(Float) / func.nullif(sum_capacity, 0),
+        Float
+    ).label("occupancy")
+
+    q = (
+        select(
+            R.airline_id,
+            func.max(A.name).label("airline"),  # determinista por airline_id
+            flights_count,
+            sum_tickets,
+            sum_capacity,
+            occupancy,
+        )
+        .select_from(R)
+        .join(A, A.id == R.airline_id)
+        .where(and_(*filters)) if filters else select(
+            R.airline_id,
+            func.max(A.name).label("airline"),
+            flights_count,
+            sum_tickets,
+            sum_capacity,
+            occupancy,
+        ).select_from(R).join(A, A.id == R.airline_id)
+    ).group_by(R.airline_id)
+
+    if min_flights > 1:
+        q = q.having(func.count() >= min_flights)
+
+    q = q.order_by(occupancy.desc().nulls_last(), flights_count.desc())
+
+    rows = db.execute(q).mappings().all()
+
+    # Mapear a Pydantic (evitar None en occupancy si cap=0)
+    out: List[AirlineOccupancyOut] = []
+    for r in rows:
+        occ = r["occupancy"] if r["occupancy"] is not None else 0.0
+        out.append(
+            AirlineOccupancyOut(
+                airline_id=r["airline_id"],
+                airline=r["airline"],
+                flights=int(r["flights"]),
+                tickets=int(r["tickets"]),
+                capacity=int(r["capacity"]),
+                occupancy=float(occ),
+            )
+        )
+    return out   
