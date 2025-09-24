@@ -7,18 +7,41 @@ services:
       POSTGRES_DB: airports
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d airports"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
-  api:
+  migrate:
     build: .
-    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       PYTHONPATH: /app
       DATABASE_URL: postgresql+psycopg2://app:app@db:5432/airports
       APP_ENV: docker
+    # Montamos el código para que vea las migraciones y alembic.ini
+    volumes:
+      - .:/app
+    command: >
+      sh -lc "alembic -c app/db/alembic.ini upgrade head"
+
+  api:
+    build: .
+    environment:
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql+psycopg2://app:app@db:5432/airports
+      APP_ENV: docker
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - .:/app
 

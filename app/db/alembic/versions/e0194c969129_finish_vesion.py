@@ -1,15 +1,15 @@
-"""init
+"""Finish vesion
 
-Revision ID: e5298eacb3a8
+Revision ID: e0194c969129
 Revises: 
-Create Date: 2025-09-22 21:27:15.835297
+Create Date: 2025-09-24 18:19:56.442418
 """
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'e5298eacb3a8'
+revision = 'e0194c969129'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -22,6 +22,9 @@ def upgrade() -> None:
     sa.Column('iata', sa.String(length=3), nullable=True),
     sa.Column('icao', sa.String(length=4), nullable=True),
     sa.Column('country', sa.String(length=100), nullable=True),
+    sa.Column('callsign', sa.String(length=100), nullable=True),
+    sa.Column('active', sa.Boolean(), nullable=False),
+    sa.Column('aliases', sa.String(length=200), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('iata', name='uq_airline_iata'),
     sa.UniqueConstraint('icao', name='uq_airline_icao')
@@ -31,22 +34,31 @@ def upgrade() -> None:
     op.create_index(op.f('ix_airlines_id'), 'airlines', ['id'], unique=False)
     op.create_table('airports',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('name', sa.String(length=200), nullable=True),
-    sa.Column('city', sa.String(length=100), nullable=True),
-    sa.Column('country', sa.String(length=100), nullable=True),
+    sa.Column('name', sa.String(length=200), nullable=False),
+    sa.Column('city', sa.String(length=120), nullable=True),
+    sa.Column('country', sa.String(length=100), nullable=False),
     sa.Column('iata', sa.String(length=3), nullable=True),
     sa.Column('icao', sa.String(length=4), nullable=True),
-    sa.Column('latitude', sa.Float(), nullable=True),
-    sa.Column('longitude', sa.Float(), nullable=True),
-    sa.Column('altitude_m', sa.Float(), nullable=True),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('iata', name='uq_airport_iata'),
-    sa.UniqueConstraint('icao', name='uq_airport_icao')
+    sa.Column('latitude', sa.Numeric(precision=9, scale=6), nullable=False),
+    sa.Column('longitude', sa.Numeric(precision=9, scale=6), nullable=False),
+    sa.Column('altitude_ft', sa.Integer(), nullable=True),
+    sa.Column('utc_offset', sa.Numeric(precision=4, scale=2), nullable=True),
+    sa.Column('continent_code', sa.String(length=2), nullable=True),
+    sa.Column('timezone_olson', sa.String(length=64), nullable=True),
+    sa.CheckConstraint('latitude >= -90 AND latitude <= 90', name='ck_airport_lat_range'),
+    sa.CheckConstraint('longitude >= -180 AND longitude <= 180', name='ck_airport_lon_range'),
+    sa.CheckConstraint('utc_offset IS NULL OR (utc_offset >= -12 AND utc_offset <= 14)', name='ck_airport_utc_range'),
+    sa.CheckConstraint('utc_offset IS NULL OR trunc(utc_offset * 2) = (utc_offset * 2)', name='ck_airport_utc_half_steps'),
+    sa.PrimaryKeyConstraint('id')
     )
+    op.create_index('ix_airport_country_city', 'airports', ['country', 'city'], unique=False)
+    op.create_index(op.f('ix_airports_city'), 'airports', ['city'], unique=False)
     op.create_index(op.f('ix_airports_country'), 'airports', ['country'], unique=False)
     op.create_index(op.f('ix_airports_iata'), 'airports', ['iata'], unique=False)
     op.create_index(op.f('ix_airports_icao'), 'airports', ['icao'], unique=False)
     op.create_index(op.f('ix_airports_id'), 'airports', ['id'], unique=False)
+    op.create_index(op.f('ix_airports_name'), 'airports', ['name'], unique=False)
+    op.create_index(op.f('ix_airports_timezone_olson'), 'airports', ['timezone_olson'], unique=False)
     op.create_table('audit_logs',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('method', sa.String(length=10), nullable=False),
@@ -59,20 +71,25 @@ def upgrade() -> None:
     op.create_table('routes',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('airline_id', sa.Integer(), nullable=True),
-    sa.Column('origin_id', sa.Integer(), nullable=False),
-    sa.Column('destination_id', sa.Integer(), nullable=False),
+    sa.Column('origin_airport_id', sa.Integer(), nullable=False),
+    sa.Column('destination_airport_id', sa.Integer(), nullable=False),
     sa.Column('capacity', sa.Integer(), nullable=True),
-    sa.Column('occupancy', sa.Float(), nullable=True),
     sa.Column('flight_date', sa.Date(), nullable=False),
+    sa.Column('operated_carrier', sa.Boolean(), nullable=False),
+    sa.Column('stops', sa.Integer(), nullable=False),
+    sa.Column('equipment', sa.Text(), nullable=True),
+    sa.Column('tickets_sold', sa.Integer(), nullable=True),
+    sa.Column('price_ticket', sa.Float(), nullable=True),
+    sa.Column('total_kilometers', sa.Float(), nullable=True),
     sa.ForeignKeyConstraint(['airline_id'], ['airlines.id'], ),
-    sa.ForeignKeyConstraint(['destination_id'], ['airports.id'], ),
-    sa.ForeignKeyConstraint(['origin_id'], ['airports.id'], ),
+    sa.ForeignKeyConstraint(['destination_airport_id'], ['airports.id'], ),
+    sa.ForeignKeyConstraint(['origin_airport_id'], ['airports.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('ix_routes_airline_od', 'routes', ['airline_id', 'origin_id', 'destination_id'], unique=False)
+    op.create_index('ix_routes_airline_od', 'routes', ['airline_id', 'origin_airport_id', 'destination_airport_id'], unique=False)
     op.create_index(op.f('ix_routes_flight_date'), 'routes', ['flight_date'], unique=False)
     op.create_index(op.f('ix_routes_id'), 'routes', ['id'], unique=False)
-    op.create_index('ix_routes_od', 'routes', ['origin_id', 'destination_id'], unique=False)
+    op.create_index('ix_routes_od', 'routes', ['origin_airport_id', 'destination_airport_id'], unique=False)
     # ### end Alembic commands ###
 
 
@@ -84,10 +101,14 @@ def downgrade() -> None:
     op.drop_index('ix_routes_airline_od', table_name='routes')
     op.drop_table('routes')
     op.drop_table('audit_logs')
+    op.drop_index(op.f('ix_airports_timezone_olson'), table_name='airports')
+    op.drop_index(op.f('ix_airports_name'), table_name='airports')
     op.drop_index(op.f('ix_airports_id'), table_name='airports')
     op.drop_index(op.f('ix_airports_icao'), table_name='airports')
     op.drop_index(op.f('ix_airports_iata'), table_name='airports')
     op.drop_index(op.f('ix_airports_country'), table_name='airports')
+    op.drop_index(op.f('ix_airports_city'), table_name='airports')
+    op.drop_index('ix_airport_country_city', table_name='airports')
     op.drop_table('airports')
     op.drop_index(op.f('ix_airlines_id'), table_name='airlines')
     op.drop_index(op.f('ix_airlines_icao'), table_name='airlines')
