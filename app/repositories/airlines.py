@@ -3,24 +3,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from app.models import Airline
-from app.ingest.fk_resolver import AirlineMaps
-
 
 class AirlinesRepo:
     @staticmethod
-    def preload_maps(db: Session) -> AirlineMaps:
-        iata2id, icao2id, ext2id = {}, {}, {}
-        # si Airline no tiene ext_id, quitá la columna y dejá ext2id={}
-        for row in db.execute(select(Airline.id, Airline.iata, Airline.icao, getattr(Airline, "ext_id", None))):
-            id_, iata, icao, ext = row
-            if iata: iata2id[iata.upper()] = id_
-            if icao: icao2id[icao.upper()]  = id_
-            if ext is not None:
-                try: ext2id[int(ext)] = id_
-                except: pass
-        return AirlineMaps(iata2id, icao2id, ext2id)
-
-# Aca las deje aparte pero podrian ir adentro de la clase del repo, no hay problema.
+    def get(db: Session, id_: int):
+        return db.get(Airline, id_)
+    
+# Aca las deje aparte pero podrian ir adentro de la clase del repo como staticmethods.
 def get_by_codes(db: Session, *, iata: str | None, icao: str | None) -> Airline | None:
     if not iata and not icao:
         return None

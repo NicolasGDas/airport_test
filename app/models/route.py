@@ -20,7 +20,6 @@ class Route(Base):
     total_kilometers: Mapped[float | None] = mapped_column(Float)
     
     
-    
     airline = relationship("Airline")
     origin = relationship("Airport", foreign_keys=[origin_airport_id])
     destination = relationship("Airport", foreign_keys=[destination_airport_id])

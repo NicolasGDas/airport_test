@@ -1,28 +1,22 @@
 import pandas as pd
-from app.schemas.routes import RouteIn
-from typing import List
+from typing import List, Dict, Any, Tuple
 from pydantic import ValidationError
+from app.schemas.routes import RouteIn
 
-def parse_routes_csv(file) -> list[RouteIn]:
-    def _read(sep=None):
-        return pd.read_csv(file, sep=sep, engine="python", dtype=str)
-
+def parse_routes_csv(file) -> Tuple[List[RouteIn], List[Dict[str, Any]]]:
     try:
-        df = pd.read_csv(file, sep="|", engine="python", dtype=str)  # Asi esta este csv
+        df = pd.read_csv(file, sep="|", engine="python", dtype=str)
     except Exception:
         file.seek(0)
-        df = _read() # Por si no falla que lo haga generico
+        df = pd.read_csv(file, engine="python", dtype=str)
 
-
-    df = df.loc[:, ~df.columns.str.match(r"^Unnamed")]
-    df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-    data = df.to_dict(orient="records")
-    
     items: List[RouteIn] = []
-    for rec in data:
+    errors: List[Dict[str, Any]] = []
+
+    for idx, rec in enumerate(df.to_dict(orient="records")):
         try:
             items.append(RouteIn.model_validate(rec))
-        except ValidationError:
-            print("Registro inválido, se ignora:", rec)
-            continue
-    return items
+        except ValidationError as ve:
+            safe_rec = {k: ("" if pd.isna(v) else str(v)) for k, v in rec.items()}
+            errors.append({"row": idx, "reason": "validation_error", "errors": ve.errors(), "rec": safe_rec})
+    return items, errors

@@ -3,7 +3,7 @@ from app.schemas.airports import AirportIn
 
 
 
-def parse_airports_csv(file) -> list[dict]:
+def parse_airports_csv(file) -> list[AirportIn]:
     try:
         df = pd.read_csv(file, sep=",", encoding="utf-8")
     except Exception:

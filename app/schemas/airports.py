@@ -20,7 +20,7 @@ NULL_TOKENS = {
 
 
 class AirportIn(BaseModel):
-    ext_id: int                   = Field(..., alias="IDAirport")  # ID externo del dataset
+    id: int                   = Field(..., alias="IDAirport") 
     name: str                     = Field(..., alias="NombreAeropuerto")
     city: Optional[str]           = Field(None, alias="Ciudad")
     country: str                  = Field(..., alias="Pais")
@@ -262,3 +262,16 @@ class AirportIn(BaseModel):
 
         data["DifUTC"] = None
         return data
+
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _int_id(cls, v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        try:
+            return int(float(s.replace(",", ".")))
+        except Exception:
+            return None
+        

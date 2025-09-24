@@ -27,7 +27,6 @@ def consecutive_high_occupancy_routes(
     end: date | None = None,
 ):
     rows = repo.consecutive_high_occupancy_routes(db, min_occupancy=min_occupancy, start=start, end=end)
-    # rows = [(airline, origin, destination, first_date, second_date), ...]
     return [
         {
             "airline": r[0],

@@ -12,8 +12,6 @@ class Airport(Base):
     # PK interno (autoincremental) distinto del IDAirport del dataset
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
-    # Opcional: conservar el ID externo del dataset
-    ext_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
     # Campos principales
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
@@ -44,8 +42,8 @@ class Airport(Base):
         CheckConstraint("utc_offset IS NULL OR trunc(utc_offset * 2) = (utc_offset * 2)", name="ck_airport_utc_half_steps"),
 
         # Unicidad parcial (PostgreSQL) — permite varios NULL y exige unicidad cuando hay valor
-        UniqueConstraint("iata", name="uq_airport_iata_not_null", deferrable=False, initially="IMMEDIATE"),
-        UniqueConstraint("icao", name="uq_airport_icao_not_null", deferrable=False, initially="IMMEDIATE"),
+        # UniqueConstraint("iata", name="uq_airport_iata_not_null", deferrable=False, initially="IMMEDIATE"),
+        # UniqueConstraint("icao", name="uq_airport_icao_not_null", deferrable=False, initially="IMMEDIATE"),
         # Nota: en la migración hacemos estas unique como *parciales* (WHERE iata IS NOT NULL), ver abajo.
 
         # Índices compuestos útiles para queries

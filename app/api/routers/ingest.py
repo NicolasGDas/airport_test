@@ -24,7 +24,7 @@ async def ingest_airlines(file: UploadFile = File(...), db: Session = Depends(ge
         - Async insert con una cola de background tasks.
     """
     for it in airlines:
-        al_inserted = ensure_airline(db, iata=it.get("iata"), icao=it.get("icao"), defaults={"name": it.get("name"), "country": it.get("country")})
+        al_inserted = ensure_airline(db, iata=it.get("iata"), icao=it.get("icao"), defaults=it)
         if al_inserted: inserted += 1
     return {"inserted_or_existing": inserted}
 
@@ -37,17 +37,6 @@ async def ingest_airports(file: UploadFile = File(...), db: Session = Depends(ge
     airports = parse_airports_csv(file.file)
     inserted = 0
     for ap in airports:
-        ap_inserted = ensure_airport(db, iata=ap.get("iata"), icao=ap.get("icao"), defaults={
-            "ext_id": ap.get("ext_id"),
-            "name": ap.get("name"),
-            "city": ap.get("city"),
-            "country": ap.get("country"),
-            "latitude": ap.get("latitude"),
-            "longitude": ap.get("longitude"),
-            "altitude_ft": ap.get("altitude_ft"),
-            "utc_offset": ap.get("utc_offset"),
-            "continent_code": ap.get("continent_code"),
-            "timezone_olson": ap.get("timezone_olson"),
-        })
+        ap_inserted = ensure_airport(db, iata=ap.get("iata"), icao=ap.get("icao"), defaults=ap)
         if ap_inserted: inserted += 1
     return {"inserted_or_existing": inserted}
